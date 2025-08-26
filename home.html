@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Editor de Niveles del Juego</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; }
+        .delete-btn {
+            background-color: #ef4444; color: white; border: none; padding: 4px 8px; border-radius: 9999px; cursor: pointer; font-size: 12px; line-height: 1; width: 24px; height: 24px; display: inline-flex; align-items: center; justify-content: center;
+        }
+        .delete-btn:hover { background-color: #dc2626; }
+        .add-btn {
+            background-color: #22c55e; color: white; border: none; padding: 8px 12px; border-radius: 8px; cursor: pointer;
+        }
+        .add-btn:hover { background-color: #16a34a; }
+        .action-btn {
+            background-color: #3b82f6; color: white; border: none; padding: 10px 16px; border-radius: 8px; cursor: pointer;
+        }
+        .action-btn:hover { background-color: #2563eb; }
+        .action-btn:disabled { background-color: #9ca3af; cursor: not-allowed; }
+    </style>
+</head>
+<body class="bg-gray-100 text-gray-800">
+
+    <div id="password-overlay" class="fixed inset-0 bg-gray-800 bg-opacity-75 flex items-center justify-center z-50">
+        <div class="bg-white p-8 rounded-lg shadow-xl text-center w-11/12 max-w-sm">
+            <h2 class="text-2xl font-bold mb-4">Acceso Restringido</h2>
+            <p class="mb-4 text-gray-600">Por favor, introduce la contraseña para editar.</p>
+            <input type="password" id="passwordInput" class="w-full p-2 border border-gray-300 rounded-md mb-4" placeholder="Contraseña...">
+            <button id="loginBtn" class="bg-cyan-600 text-white px-6 py-2 rounded-md hover:bg-cyan-700 w-full">Ingresar</button>
+            <p id="errorMessage" class="text-red-500 mt-4 h-4"></p>
+        </div>
+    </div>
+
+    <div id="main-content" class="container mx-auto p-4 md:p-8 max-w-4xl hidden">
+        <header class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-cyan-700">Editor de Contenido del Juego</h1>
+            <p class="text-gray-600 mt-2">Carga, edita y guarda los cambios directamente en GitHub.</p>
+        </header>
+
+        <div class="bg-white p-6 rounded-lg shadow-md mb-8">
+            <h2 class="text-2xl font-semibold mb-4">1. Cargar Datos desde GitHub Gist</h2>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                    <label for="gistId" class="block mb-2 font-medium">ID del Gist:</label>
+                    <input type="text" id="gistId" class="w-full p-2 border border-gray-300 rounded-md" value="407c4db8d978c1817abfaf9f3f37b709">
+                </div>
+                <div>
+                    <label for="fileName" class="block mb-2 font-medium">Nombre del Archivo:</label>
+                    <input type="text" id="fileName" class="w-full p-2 border border-gray-300 rounded-md" value="quiz.json">
+                </div>
+            </div>
+              <div class="mt-4">
+                <label for="githubToken" class="block mb-2 font-medium">GitHub Personal Access Token:</label>
+                <input type="password" id="githubToken" class="w-full p-2 border border-gray-300 rounded-md" value="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">
+            </div>
+            <button id="loadJsonBtn" class="action-btn w-full mt-4">Cargar Datos</button>
+            <div id="loadingMessage" class="mt-4 text-center h-5"></div>
+        </div>
+
+        <div id="editor" class="bg-white p-6 rounded-lg shadow-md mb-8 hidden">
+            <h2 class="text-2xl font-semibold mb-4">2. Editar Niveles</h2>
+            <div id="levelsContainer" class="space-y-6"></div>
+            <button id="addLevelBtn" class="add-btn mt-6">+ Añadir Nivel</button>
+        </div>
+
+        <div id="outputSection" class="bg-white p-6 rounded-lg shadow-md hidden">
+            <h2 class="text-2xl font-semibold mb-2">3. Guardar Cambios</h2>
+            <p class="text-gray-600 mb-4">Cuando termines de editar, haz clic en el botón para guardar los cambios directamente en tu Gist de GitHub.</p>
+            <button id="saveJsonBtn" class="action-btn w-full">Guardar en GitHub</button>
+            <div id="saveMessage" class="mt-4 text-center h-5"></div>
+        </div>
+    </div>
+
+<script>
+    // --- LÓGICA DE CONTRASEÑA ---
+    const passwordOverlay = document.getElementById('password-overlay');
+    const passwordInput = document.getElementById('passwordInput');
+    const loginBtn = document.getElementById('loginBtn');
+    const errorMessage = document.getElementById('errorMessage');
+    const mainContent = document.getElementById('main-content');
+    const CORRECT_PASSWORD = 'Blas_Pasteles';
+
+    function attemptLogin() {
+        if (passwordInput.value === CORRECT_PASSWORD) {
+            passwordOverlay.classList.add('hidden');
+            mainContent.classList.remove('hidden');
+        } else {
+            errorMessage.textContent = 'Contraseña incorrecta.';
+            passwordInput.value = '';
+            passwordInput.focus();
+        }
+    }
+    loginBtn.addEventListener('click', attemptLogin);
+    passwordInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') attemptLogin(); });
+
+    // --- LÓGICA DEL EDITOR ---
+    const gistIdInput = document.getElementById('gistId');
+    const fileNameInput = document.getElementById('fileName');
+    const githubTokenInput = document.getElementById('githubToken');
+    const loadJsonBtn = document.getElementById('loadJsonBtn');
+    const loadingMessage = document.getElementById('loadingMessage');
+    const editorDiv = document.getElementById('editor');
+    const levelsContainer = document.getElementById('levelsContainer');
+    const addLevelBtn = document.getElementById('addLevelBtn');
+    const outputSection = document.getElementById('outputSection');
+    const saveJsonBtn = document.getElementById('saveJsonBtn');
+    const saveMessage = document.getElementById('saveMessage');
+
+    let data = {};
+
+    // --- LÓGICA DE CARGA ---
+    loadJsonBtn.addEventListener('click', async () => {
+        const gistId = gistIdInput.value;
+        const fileName = fileNameInput.value;
+        const token = githubTokenInput.value;
+        loadingMessage.textContent = 'Cargando...';
+        loadingMessage.className = 'mt-4 text-center text-blue-500';
+
+        try {
+            const response = await fetch(`https://api.github.com/gists/${gistId}`, {
+                headers: { 'Authorization': `token ${token}` }
+            });
+            if (!response.ok) throw new Error(`No se pudo encontrar el Gist (puede ser privado o el ID incorrecto).`);
+            
+            const gistData = await response.json();
+            if (!gistData.files[fileName]) throw new Error(`El archivo "${fileName}" no existe en este Gist.`);
+            
+            const content = gistData.files[fileName].content;
+            console.log("LOG 1: Contenido crudo del JSON recibido:", content);
+
+            data = JSON.parse(content);
+            console.log("LOG 2: Objeto 'data' después de parsear el JSON:", JSON.parse(JSON.stringify(data)));
+            
+            if (!data.levels || !Array.isArray(data.levels)) {
+                throw new Error("El JSON no tiene una propiedad 'levels' o no es un array.");
+            }
+
+            // Transforma el formato de `options` y `correctAnswerIndex` al que el editor usa internamente
+            data.levels.forEach(level => {
+                (level.questions || []).forEach(question => {
+                    const newOptions = (question.options || []).map((optionText, index) => ({
+                        text: optionText,
+                        correct: index === question.correctAnswerIndex
+                    }));
+                    question.options = newOptions;
+                    delete question.correctAnswerIndex;
+                    if (question.questionText) {
+                        question.text = question.questionText;
+                        delete question.questionText;
+                    }
+                });
+            });
+
+            // *** LOG DE DEPURACIÓN CLAVE ***
+            console.log("LOG 3: Objeto 'data' final, transformado y listo para renderizar:", JSON.stringify(data, null, 2));
+
+            renderEditor();
+            editorDiv.classList.remove('hidden');
+            outputSection.classList.remove('hidden');
+            loadingMessage.textContent = '¡Datos cargados con éxito!';
+            loadingMessage.className = 'mt-4 text-center text-green-500';
+        } catch (error) {
+            console.error("Ha ocurrido un error en el bloque de carga:", error);
+            loadingMessage.textContent = `Error: ${error.message}`;
+            loadingMessage.className = 'mt-4 text-center text-red-500';
+            editorDiv.classList.add('hidden');
+            outputSection.classList.add('hidden');
+        }
+    });
+
+    // --- LÓGICA DE GUARDADO ---
+    saveJsonBtn.addEventListener('click', async () => {
+        const gistId = gistIdInput.value;
+        const fileName = fileNameInput.value;
+        const token = githubTokenInput.value;
+        saveMessage.textContent = 'Guardando...';
+        saveMessage.className = 'mt-4 text-center text-blue-500';
+        saveJsonBtn.disabled = true;
+
+        updateDataObjectFromDOM();
+        
+        const dataToSave = JSON.parse(JSON.stringify(data)); 
+        
+        dataToSave.levels.forEach(level => {
+            (level.questions || []).forEach(question => {
+                const textOptions = (question.options || []).map(opt => opt.text);
+                const correctIndex = (question.options || []).findIndex(opt => opt.correct);
+                
+                question.options = textOptions;
+                question.correctAnswerIndex = correctIndex !== -1 ? correctIndex : 0;
+                
+                if (question.text) {
+                    question.questionText = question.text;
+                    delete question.text;
+                }
+            });
+        });
+
+        const updatedContent = JSON.stringify(dataToSave, null, 2);
+
+        try {
+            const response = await fetch(`https://api.github.com/gists/${gistId}`, {
+                method: 'PATCH',
+                headers: { 'Authorization': `token ${token}`, 'Accept': 'application/vnd.github.v3+json' },
+                body: JSON.stringify({ files: { [fileName]: { content: updatedContent } } })
+            });
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.message || 'Respuesta de red no fue OK.');
+            }
+            saveMessage.textContent = '¡Guardado en GitHub con éxito!';
+            saveMessage.className = 'mt-4 text-center text-green-500';
+        } catch (error) {
+            saveMessage.textContent = `Error al guardar: ${error.message}`;
+            saveMessage.className = 'mt-4 text-center text-red-500';
+        } finally {
+            saveJsonBtn.disabled = false;
+        }
+    });
+
+    // --- LÓGICA DE RENDERIZADO Y EDICIÓN ---
+    function renderEditor() {
+        console.log("LOG 4: Iniciando renderEditor(). Se van a procesar " + (data.levels ? data.levels.length : 0) + " niveles.");
+        levelsContainer.innerHTML = '';
+        if (!data.levels) return;
+
+        data.levels.forEach((level, levelIndex) => {
+            console.log(`LOG 5: Renderizando Nivel ${levelIndex} - Título:`, level.title);
+            const levelDiv = document.createElement('div');
+            levelDiv.className = 'border border-gray-200 p-4 rounded-lg';
+            
+            const questionsHTML = (level.questions || []).map((q, qIndex) => {
+                const optionsHTML = (q.options || []).map((opt, optIndex) => `
+                    <div class="flex items-center gap-2">
+                        <input type="radio" name="correct-answer-${levelIndex}-${qIndex}" ${opt.correct ? 'checked' : ''} class="correct-answer-radio" data-option-index="${optIndex}">
+                        <input type="text" value="${opt.text || ''}" class="option-input flex-grow p-2 border rounded-md">
+                    </div>
+                `).join('');
+
+                return `
+                    <div class="border-t pt-4 mt-4">
+                        <div class="flex justify-between items-center mb-2">
+                            <label class="font-semibold">Pregunta ${qIndex + 1}</label>
+                            <button class="delete-btn delete-question-btn" data-question-index="${qIndex}">X</button>
+                        </div>
+                        <textarea class="question-text-input w-full p-2 border rounded-md" placeholder="Texto de la pregunta...">${q.text || ''}</textarea>
+                        <div class="options-container mt-2 space-y-2">${optionsHTML}</div>
+                    </div>
+                `;
+            }).join('');
+
+            levelDiv.innerHTML = `
+                <div class="flex justify-between items-center mb-4">
+                    <input type="text" value="${level.title || ''}" class="level-title-input text-xl font-bold w-full p-1 border-b" placeholder="Título del Nivel">
+                    <button class="delete-btn delete-level-btn" data-level-index="${levelIndex}">X</button>
+                </div>
+                <div class="questions-container space-y-4">${questionsHTML}</div>
+                <button class="add-btn add-question-btn mt-4" data-level-index="${levelIndex}">+ Añadir Pregunta</button>
+            `;
+            levelsContainer.appendChild(levelDiv);
+        });
+    }
+    
+    function updateDataObjectFromDOM() {
+        const newLevels = [];
+        document.querySelectorAll('#levelsContainer > div.border').forEach((levelElement, levelIndex) => {
+            const originalLevel = data.levels[levelIndex] || {};
+            const level = {
+                id: originalLevel.id || `lvl${levelIndex + 1}`,
+                title: levelElement.querySelector('.level-title-input').value,
+                questions: []
+            };
+            
+            levelElement.querySelectorAll('.questions-container > div.border-t').forEach((questionElement) => {
+                const questionText = questionElement.querySelector('.question-text-input').value;
+                const options = [];
+                questionElement.querySelectorAll('.option-input').forEach((optionInput, optionIndex) => {
+                    const radio = questionElement.querySelector(`input[type="radio"][data-option-index="${optionIndex}"]`);
+                    options.push({
+                        text: optionInput.value,
+                        correct: radio.checked
+                    });
+                });
+                level.questions.push({ text: questionText, options: options });
+            });
+            level.questionCountLabel = level.questions.length;
+            newLevels.push(level);
+        });
+        data.levels = newLevels;
+    }
+
+    document.body.addEventListener('click', (e) => {
+        let needsRender = false;
+        
+        if (e.target.matches('.delete-level-btn, .add-question-btn, .delete-question-btn')) {
+             updateDataObjectFromDOM();
+        }
+
+        if (e.target.matches('.delete-level-btn')) {
+            const levelIndex = parseInt(e.target.dataset.levelIndex);
+            data.levels.splice(levelIndex, 1);
+            needsRender = true;
+        }
+        if (e.target.matches('.add-question-btn')) {
+            const levelIndex = parseInt(e.target.dataset.levelIndex);
+            if(data.levels[levelIndex]) {
+                 data.levels[levelIndex].questions.push({
+                    text: "Nueva pregunta",
+                    options: [ {text: "Opción 1", correct: true}, {text: "Opción 2", correct: false}, {text: "Opción 3", correct: false},{text: "Opción 4", correct: false} ]
+                });
+                needsRender = true;
+            }
+        }
+        if (e.target.matches('.delete-question-btn')) {
+            const levelElement = e.target.closest('div.border.p-4');
+            const levelIndex = Array.from(levelsContainer.children).indexOf(levelElement);
+            const questionIndex = parseInt(e.target.dataset.questionIndex);
+            if (levelIndex > -1 && data.levels[levelIndex]) {
+                data.levels[levelIndex].questions.splice(questionIndex, 1);
+                needsRender = true;
+            }
+        }
+        
+        if (needsRender) {
+            renderEditor();
+        }
+    });
+    
+    addLevelBtn.addEventListener('click', () => {
+        updateDataObjectFromDOM();
+        data.levels.push({
+            id: `lvl${(data.levels.length || 0) + 1}`,
+            title: `NIVEL ${(data.levels.length || 0) + 1}`,
+            questionCountLabel: 0,
+            questions: []
+        });
+        renderEditor();
+    });
+</script>
+</body>
+</html>
